@@ -32,6 +32,14 @@ OUTPUT_DIR <- "."
 #   Column names become metadata slot names — no hardcoding needed elsewhere.
 METADATA_FILE <- "samples.tsv"   # use "samples.csv" if comma-delimited
 
+# Parallelization
+# N_WORKERS: number of parallel workers for per-sample steps (DecontX,
+#            DoubletFinder, scds). Set to 1 to disable parallelization.
+#            NULL auto-detects: uses all available cores minus 1.
+#            Note: each worker holds one sample's data in memory — reduce
+#            N_WORKERS if you hit memory limits.
+N_WORKERS <- NULL                    # e.g. 4, or NULL for auto-detect
+
 # ── CellRanger (prepare_cellranger.R) ─────────────────────────────────────────────
 
 CELLRANGER_PATH    <- "/path/to/cellranger"

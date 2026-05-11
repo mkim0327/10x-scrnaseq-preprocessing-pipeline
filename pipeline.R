@@ -95,6 +95,22 @@ SPLIT_BY <- "sample_id"
 if (!exists("UMAP_METHOD")) UMAP_METHOD <- "uwot"
 if (!exists("UMAP_METRIC")) UMAP_METRIC <- "cosine"
 
+# ── Parallelization setup ─────────────────────────────────────────────────────
+
+if (!exists("N_WORKERS") || is.null(N_WORKERS)) {
+  N_WORKERS <- max(1L, parallel::detectCores(logical = FALSE) - 1L)
+  message("N_WORKERS auto-detected: ", N_WORKERS)
+}
+N_WORKERS <- min(N_WORKERS, nrow(SAMPLE_METADATA))   # no point exceeding sample count
+
+if (N_WORKERS > 1) {
+  future::plan(future::multisession, workers = N_WORKERS)
+  message("Parallel plan: multisession with ", N_WORKERS, " workers")
+} else {
+  future::plan(future::sequential)
+  message("Parallel plan: sequential (N_WORKERS = 1)")
+}
+
 # ── Source remaining modules ──────────────────────────────────────────────────
 
 for (mod in c("utils.R", "cellranger_summary.R", "decontx.R",
@@ -220,6 +236,9 @@ write.table(timing_df, file = stamp("timing_summary", ext = "txt"),
 ################################################################################
 # Session info
 ################################################################################
+
+# Reset parallel workers
+future::plan(future::sequential)
 
 sink(stamp("session_info", ext = "txt"))
 sessionInfo()

@@ -36,6 +36,9 @@ check_and_install_packages <- function() {
     BiocManager       = list(source = "CRAN",         repo = "BiocManager"),
     bitops            = list(source = "CRAN",         repo = "bitops"),
     cluster           = list(source = "CRAN",         repo = "cluster"),
+    future            = list(source = "CRAN",         repo = "future"),
+    future.apply      = list(source = "CRAN",         repo = "future.apply"),
+    furrr             = list(source = "CRAN",         repo = "furrr"),
 
     # Bioconductor
     celda             = list(source = "Bioconductor", repo = "celda"),
