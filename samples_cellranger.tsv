@@ -1,0 +1,31 @@
+# samples_cellranger.tsv — Sample sheet for prepare_cellranger.R
+#
+# Instructions:
+#   - One row per sample (= one CellRanger run)
+#   - Replace all placeholder values with your actual sample information
+#   - Delete this comment block before use (lines starting with # are ignored
+#     by read.table but keeping them clean avoids confusion)
+#   - Save as tab-delimited (.tsv); do not convert to .csv
+#
+# Column descriptions:
+#   sample_id         Unique label for this sample. Used as the CellRanger --id
+#                     argument and as the output folder name under CELLRANGER_OUTDIR.
+#                     No spaces or special characters.
+#                     e.g. CTL_3m_30d_1
+#
+#   fastq_sample_name The sample name embedded in your FASTQ file names, passed
+#                     to CellRanger --sample. Must match exactly what appears
+#                     between the first and second underscore in the FASTQ filename.
+#                     e.g. if your files are MySample_S1_L001_R1_001.fastq.gz
+#                          then fastq_sample_name = MySample
+#
+#   Additional columns (add as many as needed):
+#                     Any extra columns are automatically attached as per-cell
+#                     metadata in the Seurat object and used as SCTransform
+#                     covariates in pipeline.R. Name them to reflect your
+#                     experimental design (e.g. age, treatment, batch).
+#
+sample_id	fastq_sample_name	age	treatment	batch
+SAMPLE_001	<FASTQ_SAMPLE_NAME>	<AGE>	<TREATMENT>	<BATCH>
+SAMPLE_002	<FASTQ_SAMPLE_NAME>	<AGE>	<TREATMENT>	<BATCH>
+SAMPLE_003	<FASTQ_SAMPLE_NAME>	<AGE>	<TREATMENT>	<BATCH>

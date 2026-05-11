@@ -1,0 +1,9 @@
+sample_id	fastq_sample_name	age	duration	batch
+CTL_3m_30d_1	MHK305	3m	30d	VCD_1
+CTL_3m_30d_2	MHK306	3m	30d	VCD_2
+CTL_3m_90d_1	MHK307	3m	90d	VCD_1
+CTL_3m_90d_2	MHK308	3m	90d	VCD_3
+CTL_10m_30d_1	MHK309	10m	30d	VCD_1
+CTL_10m_30d_2	MHK310	10m	30d	VCD_2
+CTL_10m_90d_1	MHK311	10m	90d	VCD_1
+CTL_10m_90d_2	MHK312	10m	90d	VCD_3
