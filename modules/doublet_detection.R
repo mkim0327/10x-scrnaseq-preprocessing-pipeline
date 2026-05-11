@@ -11,7 +11,7 @@
 # Expects in environment:
 #   seurat_obj, SAMPLE_METADATA, SPLIT_BY, PROJECT_NAME,
 #   SCT_VARS_TO_REGRESS, N_PCS, DOUBLET_EXTRA_RATE, QC_MIN_CELLS,
-#   MITO_COL, MITO_PATTERN,
+#   MITO_COL, MITO_PATTERN, N_WORKERS,
 #   DOUBLET_METHOD — one of: "union" (default), "intersection",
 #                            "DoubletFinder", "scds"
 #   make_doublet_rate_model(), drop_zero_umi(), select_pcs(),
@@ -62,33 +62,37 @@ run_doublet_detection <- function(seurat_obj) {
     data.frame(cell_number = 1.1 * sapply(sample_list, ncol))
   ) / 100
 
-  for (i in seq_along(sample_list)) {
-    s <- names(sample_list)[i]
-    message("  DoubletFinder: ", s)
+  message("  Running DoubletFinder on ", length(sample_list),
+          " sample(s) with ", N_WORKERS, " worker(s)...")
 
-    # Re-run SCTransform per sample with variables valid for this sample only.
-    # Batch and other covariates are constant within a single sample, so they
-    # must be dropped here or model.matrix will error on single-level contrasts.
-    sample_vars <- filter_regression_vars(sample_list[[i]], SCT_VARS_TO_REGRESS)
-    sample_list[[i]] <- SCTransform(sample_list[[i]], vars.to.regress = sample_vars,
-                                     verbose = FALSE)
+  df_results <- future.apply::future_lapply(
+    seq_along(sample_list),
+    function(i) {
+      obj <- sample_list[[i]]
+      s   <- names(sample_list)[i]
 
-    sweep_res   <- paramSweep_v3(sample_list[[i]], PCs = 1:pcs, sct = TRUE, num.cores = 4)
-    sweep_stats <- summarizeSweep(sweep_res, GT = FALSE)
-    bcmvn       <- find.pK(sweep_stats)
-    pk          <- as.numeric(as.character(bcmvn[which.max(bcmvn$BCmetric), "pK"]))
+      # Per-sample SCTransform: batch covariates are constant within a sample
+      sample_vars <- filter_regression_vars(obj, SCT_VARS_TO_REGRESS)
+      obj <- SCTransform(obj, vars.to.regress = sample_vars, verbose = FALSE)
 
-    nExp <- round((pred_dblt_rate[i] + DOUBLET_EXTRA_RATE) * ncol(sample_list[[i]]))
+      # num.cores = 1 avoids nested parallelism with the outer future workers
+      sweep_res   <- paramSweep_v3(obj, PCs = 1:pcs, sct = TRUE, num.cores = 1)
+      sweep_stats <- summarizeSweep(sweep_res, GT = FALSE)
+      bcmvn       <- find.pK(sweep_stats)
+      pk          <- as.numeric(as.character(bcmvn[which.max(bcmvn$BCmetric), "pK"]))
 
-    sample_list[[i]] <- doubletFinder_v3(
-      sample_list[[i]], PCs = 1:pcs, pN = 0.25, pK = pk,
-      nExp = nExp, reuse.pANN = FALSE, sct = TRUE
-    )
+      nExp <- round((pred_dblt_rate[i] + DOUBLET_EXTRA_RATE) * ncol(obj))
+      obj  <- doubletFinder_v3(obj, PCs = 1:pcs, pN = 0.25, pK = pk,
+                                nExp = nExp, reuse.pANN = FALSE, sct = TRUE)
 
-    # Standardise the classification column name
-    df_col <- grep("DF.classifications_0.25", colnames(sample_list[[i]]@meta.data), value = TRUE)
-    colnames(sample_list[[i]]@meta.data)[colnames(sample_list[[i]]@meta.data) == df_col] <- "DoubletFinder"
-  }
+      # Standardise column name
+      df_col <- grep("DF.classifications_0.25", colnames(obj@meta.data), value = TRUE)
+      colnames(obj@meta.data)[colnames(obj@meta.data) == df_col] <- "DoubletFinder"
+      obj
+    },
+    future.seed = TRUE
+  )
+  sample_list <- setNames(df_results, names(sample_list))
 
   pdf(stamp_pdf("DoubletFinder_UMAPs"), height = 5, width = 6)
   for (i in seq_along(sample_list)) {
@@ -101,19 +105,25 @@ run_doublet_detection <- function(seurat_obj) {
   # ── 3c. scds hybrid scoring ───────────────────────────────────────────────────
   # Convert to SCE using RNA assay (not SCT) so scds operates on raw counts
 
-  scds_list <- lapply(sample_list, function(obj) {
-    DefaultAssay(obj) <- "RNA"
-    as.SingleCellExperiment(obj)
-  })
+  message("  Running scds on ", length(sample_list),
+          " sample(s) with ", N_WORKERS, " worker(s)...")
 
-  for (i in seq_along(scds_list)) {
-    message("  scds: ", names(scds_list)[i])
-    scds_list[[i]] <- cxds_bcds_hybrid(scds_list[[i]])
-    n_db   <- round(pred_dblt_rate[i] * ncol(scds_list[[i]]))
-    top_db <- order(scds_list[[i]]$hybrid_score, decreasing = TRUE)[seq_len(n_db)]
-    scds_list[[i]]$scds         <- "Singlet"
-    scds_list[[i]]$scds[top_db] <- "Doublet"
-  }
+  scds_results <- future.apply::future_lapply(
+    seq_along(sample_list),
+    function(i) {
+      obj                    <- sample_list[[i]]
+      DefaultAssay(obj)      <- "RNA"
+      sce                    <- as.SingleCellExperiment(obj)
+      sce                    <- cxds_bcds_hybrid(sce)
+      n_db                   <- round(pred_dblt_rate[i] * ncol(sce))
+      top_db                 <- order(sce$hybrid_score, decreasing = TRUE)[seq_len(n_db)]
+      sce$scds               <- "Singlet"
+      sce$scds[top_db]       <- "Doublet"
+      sce
+    },
+    future.seed = TRUE
+  )
+  scds_list <- setNames(scds_results, names(sample_list))
 
   # Plot scds scores on the Seurat UMAP (from the DoubletFinder sample_list)
   # rather than trying to use a UMAP from the SCE (which doesn't have one)

@@ -7,7 +7,7 @@
 # attaches metadata from SAMPLE_METADATA.
 #
 # Expects in environment:
-#   SAMPLE_METADATA, METADATA_COVARIATE_COLS, PROJECT_NAME,
+#   SAMPLE_METADATA, METADATA_COVARIATE_COLS, PROJECT_NAME, N_WORKERS,
 #   cellranger_paths(), stamp(), stamp_pdf()
 #
 # Returns:
@@ -21,20 +21,23 @@ run_decontx <- function() {
   samples <- SAMPLE_METADATA$sample_id
 
   # ── Read counts and run DecontX ──────────────────────────────────────────────
+  # Samples are independent — run in parallel across N_WORKERS
 
-  sce_list     <- setNames(vector("list", length(samples)), samples)
-  sce_raw_list <- setNames(vector("list", length(samples)), samples)
+  message("  Running DecontX on ", length(samples), " sample(s) with ",
+          N_WORKERS, " worker(s)...")
 
-  for (s in samples) {
-    paths             <- cellranger_paths(s)
-    sce_list[[s]]     <- SingleCellExperiment(list(counts = Read10X(paths$filtered)))
-    sce_raw_list[[s]] <- SingleCellExperiment(list(counts = Read10X(paths$raw)))
-  }
-
-  for (s in samples) {
-    message("  DecontX: ", s)
-    sce_list[[s]] <- decontX(sce_list[[s]], background = sce_raw_list[[s]])
-  }
+  sce_results <- future.apply::future_lapply(
+    samples,
+    function(s) {
+      paths   <- cellranger_paths(s)
+      sce     <- SingleCellExperiment(list(counts = Read10X(paths$filtered)))
+      sce_raw <- SingleCellExperiment(list(counts = Read10X(paths$raw)))
+      sce     <- decontX(sce, background = sce_raw)
+      sce
+    },
+    future.seed = TRUE
+  )
+  sce_list <- setNames(sce_results, samples)
 
   # ── Save per-sample SCE objects and plot contamination UMAPs ─────────────────
 
@@ -51,26 +54,27 @@ run_decontx <- function() {
   message("  DecontX contamination UMAPs saved.")
 
   # ── Build per-sample Seurat objects from DecontX-corrected counts ─────────────
-  # round() can push very low-count cells to all-zero UMI, causing log(0) = -Inf
-  # in SCTransform. Drop these cells immediately.
+  # round() can push very low-count cells to all-zero UMI — drop them immediately.
 
-  seurat_list <- setNames(vector("list", length(samples)), samples)
-
-  for (s in samples) {
-    obj      <- CreateSeuratObject(
-      counts    = round(decontXcounts(sce_list[[s]])),
-      meta.data = as.data.frame(colData(sce_list[[s]]))
-    )
-    n_before <- ncol(obj)
-    obj      <- obj[, Matrix::colSums(obj@assays$RNA@counts) > 0]
-    n_drop   <- n_before - ncol(obj)
-    if (n_drop > 0)
-      message("  [", s, "] Dropped ", n_drop,
-              " cell(s) with zero UMI after DecontX rounding")
-    seurat_list[[s]] <- obj
-  }
-
-  rm(sce_raw_list)
+  seurat_results <- future.apply::future_lapply(
+    samples,
+    function(s) {
+      obj      <- CreateSeuratObject(
+        counts    = round(decontXcounts(sce_list[[s]])),
+        meta.data = as.data.frame(colData(sce_list[[s]]))
+      )
+      n_before <- ncol(obj)
+      obj      <- obj[, Matrix::colSums(obj@assays$RNA@counts) > 0]
+      n_drop   <- n_before - ncol(obj)
+      if (n_drop > 0)
+        message("  [", s, "] Dropped ", n_drop,
+                " cell(s) with zero UMI after DecontX rounding")
+      obj
+    },
+    future.seed = TRUE
+  )
+  seurat_list <- setNames(seurat_results, samples)
+  rm(sce_list)
 
   # ── Merge all samples ────────────────────────────────────────────────────────
 

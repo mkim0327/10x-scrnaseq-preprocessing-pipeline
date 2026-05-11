@@ -32,5 +32,6 @@ BATCH_COLS         <- c("batch")       # set to character(0) if no batches
 
 CLUSTER_RESOLUTION   <- 0.5          # use fixed resolution for faster testing
 CLUSTREE_RESOLUTIONS <- seq(0.2, 1.0, by = 0.2)
+N_WORKERS          <- 2              # keep low for testing
 DOUBLET_METHOD       <- "union"
 DOUBLET_EXTRA_RATE   <- 0.025
